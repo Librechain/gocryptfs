@@ -44,10 +44,10 @@ type ConfFile struct {
 	// technical info is contained in FeatureFlags.
 	Creator string
 	// EncryptedKey holds an encrypted AES key, unlocked using a password
-	// hashed with scrypt
+	// hashed with Argon2
 	EncryptedKey []byte
-	// ScryptObject stores parameters for scrypt hashing (key derivation)
-	ScryptObject ScryptKDF
+	// Argon2Object stores parameters for Argon2 hashing (key derivation)
+	Argon2Object NewArgon2KDF
 	// Version is the On-Disk-Format version this filesystem uses
 	Version uint16
 	// FeatureFlags is a list of feature flags this filesystem has enabled.
@@ -78,7 +78,7 @@ func randBytesDevRandom(n int) []byte {
 
 // Create - create a new config with a random key encrypted with
 // "password" and write it to "filename".
-// Uses scrypt with cost parameter logN.
+// Uses Argon2 with cost parameter logN.
 func Create(filename string, password []byte, plaintextNames bool,
 	logN int, creator string, aessiv bool, devrandom bool, fido2CredentialID []byte, fido2HmacSalt []byte) error {
 	var cf ConfFile
@@ -115,7 +115,7 @@ func Create(filename string, password []byte, plaintextNames bool,
 		}
 		tlog.PrintMasterkeyReminder(key)
 		// Encrypt it using the password
-		// This sets ScryptObject and EncryptedKey
+		// This sets Argon2Object and EncryptedKey
 		// Note: this looks at the FeatureFlags, so call it AFTER setting them.
 		cf.EncryptKey(key, password, logN)
 		for i := range key {
@@ -224,21 +224,21 @@ func Load(filename string) (*ConfFile, error) {
 // password.
 func (cf *ConfFile) DecryptMasterKey(password []byte) (masterkey []byte, err error) {
 	// Generate derived key from password
-	scryptHash := cf.ScryptObject.DeriveKey(password)
+	Argon2Hash := cf.Argon2Object.DeriveKey(password)
 
 	// Unlock master key using password-based key
 	useHKDF := cf.IsFeatureFlagSet(FlagHKDF)
-	ce := getKeyEncrypter(scryptHash, useHKDF)
+	ce := getKeyEncrypter(Argon2Hash, useHKDF)
 
 	tlog.Warn.Enabled = false // Silence DecryptBlock() error messages on incorrect password
 	masterkey, err = ce.DecryptBlock(cf.EncryptedKey, 0, nil)
 	tlog.Warn.Enabled = true
 
-	// Purge scrypt-derived key
-	for i := range scryptHash {
-		scryptHash[i] = 0
+	// Purge Argon2-derived key
+	for i := range Argon2Hash {
+		Argon2Hash[i] = 0
 	}
-	scryptHash = nil
+	Argon2Hash = nil
 	ce.Wipe()
 	ce = nil
 
@@ -249,25 +249,25 @@ func (cf *ConfFile) DecryptMasterKey(password []byte) (masterkey []byte, err err
 	return masterkey, nil
 }
 
-// EncryptKey - encrypt "key" using an scrypt hash generated from "password"
+// EncryptKey - encrypt "key" using an Argon2 hash generated from "password"
 // and store it in cf.EncryptedKey.
-// Uses scrypt with cost parameter logN and stores the scrypt parameters in
-// cf.ScryptObject.
+// Uses Argon2 with cost parameter logN and stores the Argon2 parameters in
+// cf.Argon2Object.
 func (cf *ConfFile) EncryptKey(key []byte, password []byte, logN int) {
-	// Generate scrypt-derived key from password
-	cf.ScryptObject = NewScryptKDF(logN)
-	scryptHash := cf.ScryptObject.DeriveKey(password)
+	// Generate Argon2-derived key from password
+	cf.Argon2Object = NewArgon2KDF(logN)
+	Argon2Hash := cf.Argon2Object.DeriveKey(password)
 
 	// Lock master key using password-based key
 	useHKDF := cf.IsFeatureFlagSet(FlagHKDF)
-	ce := getKeyEncrypter(scryptHash, useHKDF)
+	ce := getKeyEncrypter(Argon2Hash, useHKDF)
 	cf.EncryptedKey = ce.EncryptBlock(key, 0, nil)
 
-	// Purge scrypt-derived key
-	for i := range scryptHash {
-		scryptHash[i] = 0
+	// Purge Argon2-derived key
+	for i := range Argon2Hash {
+		Argon2Hash[i] = 0
 	}
-	scryptHash = nil
+	Argon2Hash = nil
 	ce.Wipe()
 	ce = nil
 }
@@ -310,14 +310,14 @@ func (cf *ConfFile) WriteFile() error {
 
 // getKeyEncrypter is a helper function that returns the right ContentEnc
 // instance for the "useHKDF" setting.
-func getKeyEncrypter(scryptHash []byte, useHKDF bool) *contentenc.ContentEnc {
+func getKeyEncrypter(Argon2Hash []byte, useHKDF bool) *contentenc.ContentEnc {
 	IVLen := 96
 	// gocryptfs v1.2 and older used 96-bit IVs for master key encryption.
 	// v1.3 adds the "HKDF" feature flag, which also enables 128-bit nonces.
 	if useHKDF {
 		IVLen = contentenc.DefaultIVBits
 	}
-	cc := cryptocore.New(scryptHash, cryptocore.BackendGoGCM, IVLen, useHKDF, false)
+	cc := cryptocore.New(Argon2Hash, cryptocore.BackendGoGCM, IVLen, useHKDF, false)
 	ce := contentenc.New(cc, 4096, false)
 	return ce
 }
