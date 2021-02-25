@@ -30,7 +30,7 @@ type argContainer struct {
 	noprealloc, speed, hkdf, serialize_reads, forcedecode, hh, info,
 	sharedstorage, devrandom, fsck bool
 	// Mount options with opposites
-	dev, nodev, suid, nosuid, exec, noexec, rw, ro bool
+	dev, nodev, suid, nosuid, exec, noexec, rw, ro, kernel_cache bool
 	masterkey, mountpoint, cipherdir, cpuprofile,
 	memprofile, ko, ctlsock, fsname, force_owner, trace, fido2 string
 	// -extpass, -badname, -passfile can be passed multiple times
@@ -39,7 +39,7 @@ type argContainer struct {
 	exclude, excludeWildcard, excludeFrom multipleStrings
 	// Configuration file name override
 	config             string
-	notifypid, scryptn int
+	// notifypid, scryptn int
 	// Idle time before autounmount
 	idle time.Duration
 	// Helper variables that are NOT cli options all start with an underscore
@@ -50,7 +50,7 @@ type argContainer struct {
 	// _forceOwner is, if non-nil, a parsed, validated Owner (as opposed to the string above)
 	_forceOwner *fuse.Owner
 	// _explicitScryptn is true then the user passed "-scryptn=xyz"
-	_explicitScryptn bool
+	// _explicitScryptn bool
 }
 
 type multipleStrings []string
@@ -179,6 +179,7 @@ func parseCliOpts() (args argContainer) {
 	flagSet.BoolVar(&args.noexec, "noexec", false, "Deny executables")
 	flagSet.BoolVar(&args.rw, "rw", false, "Mount the filesystem read-write")
 	flagSet.BoolVar(&args.ro, "ro", false, "Mount the filesystem read-only")
+	flagSet.BoolVar(&args.kernel_cache, "kernel_cache", false, "Enable the FUSE kernel_cache option")
 
 	flagSet.StringVar(&args.masterkey, "masterkey", "", "Mount with explicit master key")
 	flagSet.StringVar(&args.cpuprofile, "cpuprofile", "", "Write cpu profile to specified file")
@@ -205,8 +206,8 @@ func parseCliOpts() (args argContainer) {
 
 	flagSet.IntVar(&args.notifypid, "notifypid", 0, "Send USR1 to the specified process after "+
 		"successful mount - used internally for daemonization")
-	const scryptn = "scryptn"
-	flagSet.IntVar(&args.scryptn, scryptn, configfile.ScryptDefaultLogN, "scrypt cost parameter logN. Possible values: 10-28. "+
+	// const scryptn = "scryptn"
+	// flagSet.IntVar(&args.scryptn, scryptn, configfile.ScryptDefaultLogN, "scrypt cost parameter logN. Possible values: 10-28. "+
 		"A lower value speeds up mounting and reduces its memory needs, but makes the password susceptible to brute-force attacks")
 
 	flagSet.DurationVar(&args.idle, "i", 0, "Alias for -idle")
@@ -229,9 +230,7 @@ func parseCliOpts() (args argContainer) {
 		os.Exit(exitcodes.Usage)
 	}
 	// We want to know if -scryptn was passed explicitly
-	if isFlagPassed(flagSet, scryptn) {
-		args._explicitScryptn = true
-	}
+//
 	// "-openssl" needs some post-processing
 	if opensslAuto == "auto" {
 		args.openssl = stupidgcm.PreferOpenSSL()
