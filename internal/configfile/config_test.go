@@ -139,6 +139,8 @@ func TestIsFeatureFlagKnown(t *testing.T) {
 			t.Errorf("flag %q should be known", f)
 		}
 	}
+	
+// Can't entirely remember if there were changes that were made to this one, but just going to assume that there were ; at the very least Scrypt was replaced with Argon2 in the relevant areas. 
 
 	f := "StrangeFeatureFlag"
 	if cf.isFeatureFlagKnown(f) {
